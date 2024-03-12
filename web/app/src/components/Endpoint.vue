@@ -16,9 +16,8 @@
             {{ (minResponseTime === maxResponseTime ? minResponseTime : (minResponseTime + '-' + maxResponseTime)) }}ms
           </slot>
         </span>
-<!--        <span class="text-sm font-bold cursor-pointer">-->
-<!--          ⋯-->
-<!--        </span>-->
+        <span v-if="customUptime" class="badge badge-uptime ml-2">{{ customUptime }}</span>
+        <span v-if="customResponseTime" class="badge badge-response-time ml-2">{{ customResponseTime }}ms</span>
       </div>
     </div>
     <div>
@@ -64,7 +63,9 @@ export default {
   props: {
     maximumNumberOfResults: Number,
     data: Object,
-    showAverageResponseTime: Boolean
+    showAverageResponseTime: Boolean,
+    customUptime: String,
+    customResponseTime: Number
   },
   emits: ['showTooltip', 'toggleShowAverageResponseTime'],
   mixins: [helper],
@@ -174,6 +175,28 @@ export default {
 
 .status.status-failure::after {
   content: "X";
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25em 0.4em;
+  font-size: 75%;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.25rem;
+}
+
+.badge-uptime {
+  color: #fff;
+  background-color: #28a745;
+}
+
+.badge-response-time {
+  color: #fff;
+  background-color: #007bff;
 }
 
 @media screen and (max-width: 600px) {

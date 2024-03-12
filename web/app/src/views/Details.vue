@@ -21,6 +21,10 @@
       <hr/>
       <div class="flex space-x-4 text-center text-2xl mt-6 relative bottom-2 mb-10">
         <div class="flex-1">
+          <h2 class="text-sm text-gray-400 mb-1">Last 30 days</h2>
+          <img :src="generateUptimeBadgeImageURL('30d')" alt="30d uptime badge" class="mx-auto"/>
+        </div>
+        <div class="flex-1">
           <h2 class="text-sm text-gray-400 mb-1">Last 7 days</h2>
           <img :src="generateUptimeBadgeImageURL('7d')" alt="7d uptime badge" class="mx-auto"/>
         </div>
@@ -39,6 +43,10 @@
       <hr/>
       <img :src="generateResponseTimeChartImageURL()" alt="response time chart" class="mt-6"/>
       <div class="flex space-x-4 text-center text-2xl mt-6 relative bottom-2 mb-10">
+        <div class="flex-1">
+          <h2 class="text-sm text-gray-400 mb-1">Last 30 days</h2>
+          <img :src="generateResponseTimeBadgeImageURL('30d')" alt="30d response time badge" class="mx-auto mt-2"/>
+        </div>
         <div class="flex-1">
           <h2 class="text-sm text-gray-400 mb-1">Last 7 days</h2>
           <img :src="generateResponseTimeBadgeImageURL('7d')" alt="7d response time badge" class="mx-auto mt-2"/>
