@@ -4,7 +4,6 @@
 
 ![test](https://github.com/TwiN/gatus/actions/workflows/test.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/TwiN/gatus?)](https://goreportcard.com/report/github.com/TwiN/gatus)
-[![codecov](https://codecov.io/gh/TwiN/gatus/branch/master/graph/badge.svg)](https://codecov.io/gh/TwiN/gatus)
 [![Go version](https://img.shields.io/github/go-mod/go-version/TwiN/gatus.svg)](https://github.com/TwiN/gatus)
 [![Docker pulls](https://img.shields.io/docker/pulls/twinproduction/gatus.svg)](https://cloud.docker.com/repository/docker/twinproduction/gatus)
 [![Follow TwiN](https://img.shields.io/github/followers/TwiN?label=Follow&style=social)](https://github.com/TwiN)
@@ -84,6 +83,7 @@ Have any feedback or questions? [Create a discussion](https://github.com/TwiN/ga
     - [Configuring PagerDuty alerts](#configuring-pagerduty-alerts)
     - [Configuring Plivo alerts](#configuring-plivo-alerts)
     - [Configuring Pushover alerts](#configuring-pushover-alerts)
+    - [Configuring Resend alerts](#configuring-resend-alerts)
     - [Configuring Rocket.Chat alerts](#configuring-rocketchat-alerts)
     - [Configuring SendGrid alerts](#configuring-sendgrid-alerts)
     - [Configuring Signal alerts](#configuring-signal-alerts)
@@ -538,8 +538,8 @@ Allows you to configure the application wide defaults for the dashboard's UI. So
 | `ui.description`          | Meta description for the page.                                                                                                           | `Gatus is an advanced...`.                          |
 | `ui.dashboard-heading`    | Dashboard title between header and endpoints                                                                                             | `Health Dashboard`                                  |
 | `ui.dashboard-subheading` | Dashboard description between header and endpoints                                                                                       | `Monitor the health of your endpoints in real-time` |
-| `ui.header`               | Header at the top of the dashboard.                                                                                                      | `Gatus`                                             |
-| `ui.logo`                 | URL to the logo to display.                                                                                                              | `""`                                                |
+| `ui.header`               | Header at the top of the dashboard. Also used as the title on the OIDC login page.                                                       | `Gatus`                                             |
+| `ui.logo`                 | URL to the logo to display. When set, shown alongside the Gatus logo on the OIDC login page.                                             | `""`                                                |
 | `ui.link`                 | Link to open when the logo is clicked.                                                                                                   | `""`                                                |
 | `ui.favicon.default`      | Favourite default icon to display in web browser tab or address bar.                                                                     | `/favicon.ico`                                      |
 | `ui.favicon.size16x16`    | Favourite icon to display in web browser for 16x16 size.                                                                                 | `/favicon-16x16.png`                                |
@@ -551,6 +551,7 @@ Allows you to configure the application wide defaults for the dashboard's UI. So
 | `ui.dark-mode`            | Whether to enable dark mode by default. Note that this is superseded by the user's operating system theme preferences.                   | `true`                                              |
 | `ui.default-sort-by`      | Default sorting option for endpoints in the dashboard. Can be `name`, `group`, or `health`. Note that user preferences override this.    | `name`                                              |
 | `ui.default-filter-by`    | Default filter option for endpoints in the dashboard. Can be `none`, `failing`, or `unstable`. Note that user preferences override this. | `none`                                              |
+| `ui.login-subtitle`       | Subtitle displayed on the OIDC login page.                                                                                               | `System Monitoring Dashboard`                       |
 
 ### Announcements
 System-wide announcements allow you to display important messages at the top of the status page. These can be used to inform users about planned maintenance, ongoing issues, or general information. You can use markdown to format your announcements.
@@ -656,6 +657,7 @@ the client used to send the request.
 | `client.tls.renegotiation`             | Type of renegotiation support to provide. (`never`, `freely`, `once`).        | `"never"`       |
 | `client.network`                       | The network to use for ICMP endpoint client (`ip`, `ip4` or `ip6`).           | `"ip"`          |
 | `client.tunnel`                        | Name of the SSH tunnel to use for this endpoint. See [Tunneling](#tunneling). | `""`            |
+| `client.store-cookies`                 | Whether to store cookies between requests.                                    | `false`         |
 
 
 > 📝 Some of these parameters are ignored based on the type of endpoint. For instance, there's no certificate involved
@@ -668,6 +670,7 @@ client:
   insecure: false
   ignore-redirect: false
   timeout: 10s
+  store-cookies: false
 ```
 
 Note that this configuration is only available under `endpoints[]`, `alerting.mattermost` and `alerting.custom`.
@@ -863,6 +866,7 @@ endpoints:
 | `alerting.pagerduty`       | Configuration for alerts of type `pagerduty`. <br />See [Configuring PagerDuty alerts](#configuring-pagerduty-alerts).                  | `{}`    |
 | `alerting.plivo`           | Configuration for alerts of type `plivo`. <br />See [Configuring Plivo alerts](#configuring-plivo-alerts).                              | `{}`    |
 | `alerting.pushover`        | Configuration for alerts of type `pushover`. <br />See [Configuring Pushover alerts](#configuring-pushover-alerts).                     | `{}`    |
+| `alerting.resend`          | Configuration for alerts of type `resend`. <br />See [Configuring Resend alerts](#configuring-resend-alerts).                           | `{}`    |
 | `alerting.rocketchat`      | Configuration for alerts of type `rocketchat`. <br />See [Configuring Rocket.Chat alerts](#configuring-rocketchat-alerts).              | `{}`    |
 | `alerting.sendgrid`        | Configuration for alerts of type `sendgrid`. <br />See [Configuring SendGrid alerts](#configuring-sendgrid-alerts).                     | `{}`    |
 | `alerting.signal`          | Configuration for alerts of type `signal`. <br />See [Configuring Signal alerts](#configuring-signal-alerts).                           | `{}`    |
@@ -1304,6 +1308,10 @@ Here's an example of what the notifications look like:
 
 
 #### Configuring HomeAssistant alerts
+
+> [!NOTE]
+> It is recommended to use the native Home Assistant integration instead (see below).
+
 | Parameter                                  | Description                                                                            | Default Value |
 |:-------------------------------------------|:---------------------------------------------------------------------------------------|:--------------|
 | `alerting.homeassistant.url`               | HomeAssistant instance URL                                                             | Required `""` |
@@ -1377,6 +1385,61 @@ To get your HomeAssistant long-lived access token:
 4. Click "Create Token"
 5. Give it a name (e.g., "Gatus")
 6. Copy the token - you'll only see it once!
+
+##### Native Home Assistant Integration
+
+Gatus can be integrated into [Home Assistant](https://www.home-assistant.io/) to monitor the status of your endpoints directly from your home automation dashboard.
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=gatus)
+
+<details>
+  <summary>Configuration & Automation Examples</summary>
+
+###### Configuration
+
+To add the integration, click the button above or:
+
+1. In Home Assistant, navigate to **Settings** > **Devices & Services**.
+2. Click **Add Integration** in the bottom-right corner.
+3. Search for **Gatus** and select it.
+4. Enter the base URL of your Gatus instance (e.g., `http://192.168.1.50:8080`).
+
+Home Assistant will create a binary sensor for each endpoint configured in Gatus. Because these sensors use the `connectivity` device class, they will show as `Connected` (Up) when the endpoint is healthy, and `Disconnected` (Down) when the endpoint is unhealthy.
+
+###### Automation Example
+
+You can easily set up a UI automation in Home Assistant to receive mobile notifications if any endpoint goes down:
+
+1. Navigate to **Settings** > **Automations & Scenes** > **Create Automation** > **Create new automation**.
+2. Under **Triggers**, click **Add Trigger** and select **State**.
+3. In the **Entity** field, select the Gatus binary sensor(s) you want to monitor.
+4. Set the **To** field to `off` (since a state of `off` represents a disconnected/down endpoint).
+5. Under **Actions**, click **Add Action** and select **Perform action**.
+6. Select your notification service (e.g., `Send a notification via mobile_app_<your_device_name>`).
+7. Set the **Message** field. You can use template values to dynamically include the endpoint name:
+   ```yaml
+   message: "The endpoint {{ trigger.to_state.name }} is down!"
+   ```
+
+For advanced users, here is the YAML representation of the automation:
+
+```yaml
+alias: "Notify when Gatus endpoint goes down"
+description: "Sends a mobile notification if a Gatus endpoint goes down"
+trigger:
+  - platform: state
+    entity_id:
+      - binary_sensor.website
+      - binary_sensor.make_sure_header_is_rendered
+    to: "off"
+action:
+  - action: notify.mobile_app_your_device_name
+    data:
+      title: "Gatus Alert"
+      message: "The endpoint {{ trigger.to_state.name }} is down!"
+```
+
+</details>
 
 
 #### Configuring IFTTT alerts
@@ -1931,6 +1994,46 @@ endpoints:
 ```
 
 
+#### Configuring Resend alerts
+| Parameter                           | Description                                                                                         | Default       |
+|:------------------------------------|:----------------------------------------------------------------------------------------------------|:--------------|
+| `alerting.resend`                   | Configuration for alerts of type `resend`                                                           | `{}`          |
+| `alerting.resend.api-key`           | Resend API key                                                                                      | Required `""` |
+| `alerting.resend.from`              | Email address to send from (e.g. `alerts@example.com` or `Gatus <alerts@example.com>`)              | Required `""` |
+| `alerting.resend.to`                | Email address(es) to send alerts to (comma-separated for multiple recipients, up to 50)             | Required `""` |
+| `alerting.resend.client`            | Client configuration. <br />See [Client configuration](#client-configuration).                      | `{}`          |
+| `alerting.resend.default-alert`     | Default alert configuration. <br />See [Setting a default alert](#setting-a-default-alert)          | N/A           |
+| `alerting.resend.overrides`         | List of overrides that may be prioritized over the default configuration                            | `[]`          |
+| `alerting.resend.overrides[].group` | Endpoint group for which the configuration will be overridden by this configuration                 | `""`          |
+| `alerting.resend.overrides[].*`     | See `alerting.resend.*` parameters                                                                  | `{}`          |
+
+The `from` address must belong to a domain that has been verified in your Resend account.
+
+```yaml
+alerting:
+  resend:
+    api-key: "re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    from: "Gatus <alerts@example.com>"
+    to: "admin@example.com,ops@example.com"
+    # You can also add group-specific to keys, which will
+    # override the to key above for the specified groups
+    overrides:
+      - group: "core"
+        to: "core-team@example.com"
+
+endpoints:
+  - name: website
+    url: "https://twin.sh/health"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: resend
+        send-on-resolved: true
+        description: "healthcheck failed"
+```
+
+
 #### Configuring Rocket.Chat alerts
 
 > ⚠️ **WARNING**: This alerting provider has not been tested yet. If you've tested it and confirmed that it works, please remove this warning and create a pull request, or comment on [#1223](https://github.com/TwiN/gatus/discussions/1223) with whether the provider works as intended. Thank you for your cooperation.
@@ -2471,6 +2574,7 @@ endpoints:
 | `alerting.zulip.bot-api-key`       | Bot API key                                                                         | Required `""` |
 | `alerting.zulip.domain`            | Full organization domain (e.g.: yourZulipDomain.zulipchat.com)                      | Required `""` |
 | `alerting.zulip.channel-id`        | The channel ID where Gatus will send the alerts                                     | Required `""` |
+| `alerting.zulip.topic`             | The topic under which the alerts will be sent.<br />Supports the `[ENDPOINT_NAME]`, `[ENDPOINT_GROUP]` and `[ALERT_DESCRIPTION]` placeholders. | `Gatus`       |
 | `alerting.zulip.overrides`         | List of overrides that may be prioritized over the default configuration            | `[]`          |
 | `alerting.zulip.overrides[].group` | Endpoint group for which the configuration will be overridden by this configuration | `""`          |
 | `alerting.zulip.overrides[].*`     | See `alerting.zulip.*` parameters                                                   | `{}`          |
@@ -2482,6 +2586,7 @@ alerting:
     bot-api-key: "********************************"
     domain: some.zulip.org
     channel-id: 123456
+    topic: "[ENDPOINT_NAME]" # Optional; groups each endpoint's alerts under its own topic. Defaults to "Gatus"
 
 endpoints:
   - name: website
@@ -2843,12 +2948,13 @@ This is an experimental feature. It may be removed or updated in a breaking mann
 there are known issues with this feature. If you'd like to provide some feedback, please write a comment in [#64](https://github.com/TwiN/gatus/issues/64).
 Use at your own risk.
 
-| Parameter                          | Description                                  | Default       |
-|:-----------------------------------|:---------------------------------------------|:--------------|
-| `remote`                           | Remote configuration                         | `{}`          |
-| `remote.instances`                 | List of remote instances                     | Required `[]` |
-| `remote.instances.endpoint-prefix` | String to prefix all endpoint names with     | `""`          |
-| `remote.instances.url`             | URL from which to retrieve endpoint statuses | Required `""` |
+| Parameter                          | Description                                    | Default       |
+|:-----------------------------------|:-----------------------------------------------|:--------------|
+| `remote`                           | Remote configuration                           | `{}`          |
+| `remote.instances`                 | List of remote instances                       | Required `[]` |
+| `remote.instances.endpoint-prefix` | String to prefix all endpoint names with       | `""`          |
+| `remote.instances.url`             | URL from which to retrieve endpoint statuses   | Required `""` |
+| `remote.client`                    | [Client configuration](#client-configuration). | `{}`          |
 
 ```yaml
 remote:
@@ -2906,6 +3012,7 @@ To get more details, please check [chart's configuration](https://github.com/Twi
 #### Kubernetes
 
 Gatus can be deployed on Kubernetes using Terraform by using the following module: [terraform-kubernetes-gatus](https://github.com/TwiN/terraform-kubernetes-gatus).
+
 
 ## Running the tests
 ```console
@@ -3258,7 +3365,7 @@ endpoints:
 
 
 ### Concurrency
-By default, Gatus allows up to 5 endpoints/suites to be monitored concurrently. This provides a balance between performance and resource usage while maintaining accurate response time measurements.
+By default, Gatus allows up to 3 endpoints/suites to be monitored concurrently. This provides a balance between performance and resource usage while maintaining accurate response time measurements.
 
 You can configure the concurrency level using the `concurrency` parameter:
 

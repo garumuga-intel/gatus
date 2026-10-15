@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"net"
 	"net/http"
@@ -221,12 +222,12 @@ func (e *Endpoint) ValidateAndSetDefaults() error {
 		e.Headers = make(map[string]string)
 	}
 	// Automatically add user agent header if there isn't one specified in the endpoint configuration
-	if _, userAgentHeaderExists := e.Headers[UserAgentHeader]; !userAgentHeaderExists {
+	if !hasHeader(e.Headers, UserAgentHeader) {
 		e.Headers[UserAgentHeader] = GatusUserAgent
 	}
 	// Automatically add "Content-Type: application/json" header if there's no Content-Type set
 	// and endpoint.GraphQL is set to true
-	if _, contentTypeHeaderExists := e.Headers[ContentTypeHeader]; !contentTypeHeaderExists && e.GraphQL {
+	if !hasHeader(e.Headers, ContentTypeHeader) && e.GraphQL {
 		e.Headers[ContentTypeHeader] = "application/json"
 	}
 	if len(e.Conditions) == 0 {
@@ -240,6 +241,11 @@ func (e *Endpoint) ValidateAndSetDefaults() error {
 			return fmt.Errorf("%v: %w", ErrInvalidConditionFormat, err)
 		}
 	}
+	for _, maintenanceWindow := range e.MaintenanceWindows {
+		if err := maintenanceWindow.ValidateAndSetDefaults(); err != nil {
+			return err
+		}
+	}
 	if e.DNSConfig != nil {
 		return e.DNSConfig.ValidateAndSetDefault()
 	}
@@ -248,11 +254,6 @@ func (e *Endpoint) ValidateAndSetDefaults() error {
 	}
 	if e.Type() == TypeUNKNOWN {
 		return ErrUnknownEndpointType
-	}
-	for _, maintenanceWindow := range e.MaintenanceWindows {
-		if err := maintenanceWindow.ValidateAndSetDefaults(); err != nil {
-			return err
-		}
 	}
 	// Make sure that the request can be created
 	_, err := http.NewRequest(e.Method, e.URL, bytes.NewBuffer([]byte(e.getParsedBody())))
@@ -489,12 +490,10 @@ func (e *Endpoint) call(result *Result) {
 	} else if endpointType == TypeWS {
 		wsHeaders := map[string]string{}
 		if e.Headers != nil {
-			for k, v := range e.Headers {
-				wsHeaders[k] = v
-			}
+			maps.Copy(wsHeaders, e.Headers)
 		}
-		if _, exists := wsHeaders["User-Agent"]; !exists {
-			wsHeaders["User-Agent"] = GatusUserAgent
+		if !hasHeader(wsHeaders, UserAgentHeader) {
+			wsHeaders[UserAgentHeader] = GatusUserAgent
 		}
 		result.Connected, result.Body, err = client.QueryWebSocket(e.URL, e.getParsedBody(), wsHeaders, e.ClientConfig)
 		if err != nil {
@@ -582,7 +581,7 @@ func (e *Endpoint) buildHTTPRequest() *http.Request {
 	request, _ := http.NewRequest(e.Method, e.URL, bodyBuffer)
 	for k, v := range e.Headers {
 		request.Header.Set(k, v)
-		if k == HostHeader {
+		if strings.EqualFold(k, HostHeader) {
 			request.Host = v
 		}
 	}
@@ -621,6 +620,16 @@ func (e *Endpoint) needsToRetrieveDomainExpiration() bool {
 func (e *Endpoint) needsToRetrieveIP() bool {
 	for _, condition := range e.Conditions {
 		if condition.hasIPPlaceholder() {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHeader checks if a header exists in the map using a case-insensitive lookup
+func hasHeader(headers map[string]string, name string) bool {
+	for k := range headers {
+		if strings.EqualFold(k, name) {
 			return true
 		}
 	}

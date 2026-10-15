@@ -21,6 +21,30 @@ import (
 	"github.com/TwiN/gatus/v5/test"
 )
 
+func TestHasHeader(t *testing.T) {
+	scenarios := []struct {
+		name     string
+		headers  map[string]string
+		lookup   string
+		expected bool
+	}{
+		{name: "exact-match", headers: map[string]string{"User-Agent": "test"}, lookup: "User-Agent", expected: true},
+		{name: "lowercase-lookup", headers: map[string]string{"User-Agent": "test"}, lookup: "user-agent", expected: true},
+		{name: "uppercase-lookup", headers: map[string]string{"user-agent": "test"}, lookup: "USER-AGENT", expected: true},
+		{name: "mixed-case", headers: map[string]string{"UsEr-AgEnT": "test"}, lookup: "uSeR-aGeNt", expected: true},
+		{name: "not-found", headers: map[string]string{"Content-Type": "test"}, lookup: "User-Agent", expected: false},
+		{name: "empty-headers", headers: map[string]string{}, lookup: "User-Agent", expected: false},
+		{name: "nil-headers", headers: nil, lookup: "User-Agent", expected: false},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.name, func(t *testing.T) {
+			if result := hasHeader(scenario.headers, scenario.lookup); result != scenario.expected {
+				t.Errorf("expected %v, got %v", scenario.expected, result)
+			}
+		})
+	}
+}
+
 func TestEndpoint(t *testing.T) {
 	defer client.InjectHTTPClient(nil)
 	scenarios := []struct {
@@ -592,6 +616,70 @@ func TestEndpoint_ValidateAndSetDefaultsWithSSH(t *testing.T) {
 	}
 }
 
+func TestEndpoint_ValidateAndSetDefaultsWithMaintenanceWindowOnDNSAndSSH(t *testing.T) {
+	scenarios := []struct {
+		name     string
+		endpoint func(windows []*maintenance.Config) *Endpoint
+	}{
+		{
+			name: "dns",
+			endpoint: func(windows []*maintenance.Config) *Endpoint {
+				return &Endpoint{
+					Name:               "dns-test",
+					URL:                "8.8.8.8",
+					DNSConfig:          &dns.Config{QueryType: "A", QueryName: "example.com"},
+					Conditions:         []Condition{Condition("[DNS_RCODE] == NOERROR")},
+					MaintenanceWindows: windows,
+				}
+			},
+		},
+		{
+			name: "ssh",
+			endpoint: func(windows []*maintenance.Config) *Endpoint {
+				return &Endpoint{
+					Name:               "ssh-test",
+					URL:                "ssh://example.com:22",
+					SSHConfig:          &ssh.Config{Username: "username", Password: "password"},
+					Conditions:         []Condition{Condition("[CONNECTED] == true")},
+					MaintenanceWindows: windows,
+				}
+			},
+		},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.name+"-invalid-maintenance-window", func(t *testing.T) {
+			endpoint := scenario.endpoint([]*maintenance.Config{{Start: "25:00", Duration: time.Hour}})
+			if err := endpoint.ValidateAndSetDefaults(); err == nil {
+				t.Error("expected an error because the maintenance window has an invalid start, got none")
+			}
+		})
+		t.Run(scenario.name+"-under-maintenance", func(t *testing.T) {
+			window := newMaintenanceWindowThatStartedAMinuteAgo(t, "Europe/Berlin")
+			endpoint := scenario.endpoint([]*maintenance.Config{window})
+			if err := endpoint.ValidateAndSetDefaults(); err != nil {
+				t.Fatal("did not expect an error, got", err)
+			}
+			if !endpoint.MaintenanceWindows[0].IsUnderMaintenance() {
+				t.Errorf("expected endpoint to be under maintenance (window starting at %s %s)", window.Start, window.Timezone)
+			}
+		})
+	}
+}
+
+// newMaintenanceWindowThatStartedAMinuteAgo returns a one-hour maintenance window whose start
+// is one minute before the current time in the given timezone
+func newMaintenanceWindowThatStartedAMinuteAgo(t *testing.T, timezone string) *maintenance.Config {
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &maintenance.Config{
+		Start:    time.Now().In(location).Add(-time.Minute).Format("15:04"),
+		Duration: time.Hour,
+		Timezone: timezone,
+	}
+}
+
 func TestEndpoint_ValidateAndSetDefaultsWithSimpleErrors(t *testing.T) {
 	scenarios := []struct {
 		endpoint    *Endpoint
@@ -717,6 +805,76 @@ func TestEndpoint_buildHTTPRequestWithHostHeader(t *testing.T) {
 	if request.Method != "POST" {
 		t.Error("request.Method should've been POST, but was", request.Method)
 	}
+	if request.Host != "example.com" {
+		t.Error("request.Host should've been example.com, but was", request.Host)
+	}
+}
+
+func TestEndpoint_buildHTTPRequestWithLowercaseUserAgent(t *testing.T) {
+	condition := Condition("[STATUS] == 200")
+	endpoint := Endpoint{
+		Name:       "website-health",
+		URL:        "https://twin.sh/health",
+		Conditions: []Condition{condition},
+		Headers: map[string]string{
+			"user-agent": "CustomAgent/1.0",
+		},
+	}
+	err := endpoint.ValidateAndSetDefaults()
+	if err != nil {
+		t.Fatal("did not expect an error, got", err)
+	}
+	if _, exists := endpoint.Headers[UserAgentHeader]; exists {
+		t.Error("User-Agent header should not have been added since user-agent was already specified")
+	}
+	request := endpoint.buildHTTPRequest()
+	if userAgent := request.Header.Get("User-Agent"); userAgent != "CustomAgent/1.0" {
+		t.Errorf("request.Header.Get(User-Agent) should've been CustomAgent/1.0, but was %s", userAgent)
+	}
+}
+
+func TestEndpoint_buildHTTPRequestWithLowercaseContentType(t *testing.T) {
+	condition := Condition("[STATUS] == 200")
+	endpoint := Endpoint{
+		Name:       "website-graphql",
+		URL:        "https://twin.sh/graphql",
+		Method:     "POST",
+		Conditions: []Condition{condition},
+		GraphQL:    true,
+		Headers: map[string]string{
+			"content-type": "application/graphql",
+		},
+		Body: `{ users { id } }`,
+	}
+	err := endpoint.ValidateAndSetDefaults()
+	if err != nil {
+		t.Fatal("did not expect an error, got", err)
+	}
+	if _, exists := endpoint.Headers[ContentTypeHeader]; exists {
+		t.Error("Content-Type header should not have been added since content-type was already specified")
+	}
+	request := endpoint.buildHTTPRequest()
+	if contentType := request.Header.Get("Content-Type"); contentType != "application/graphql" {
+		t.Errorf("request.Header.Get(Content-Type) should've been application/graphql, but was %s", contentType)
+	}
+}
+
+func TestEndpoint_buildHTTPRequestWithLowercaseHostHeader(t *testing.T) {
+	condition := Condition("[STATUS] == 200")
+	endpoint := Endpoint{
+		Name:       "website-health",
+		URL:        "https://twin.sh/health",
+		Method:     "POST",
+		Conditions: []Condition{condition},
+		Headers: map[string]string{
+			"host": "example.com",
+		},
+	}
+	err := endpoint.ValidateAndSetDefaults()
+	if err != nil {
+		t.Fatal("did not expect an error, got", err)
+	}
+	request := endpoint.buildHTTPRequest()
 	if request.Host != "example.com" {
 		t.Error("request.Host should've been example.com, but was", request.Host)
 	}
